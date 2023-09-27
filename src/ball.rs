@@ -26,7 +26,7 @@ pub struct Ball {
     is_left_pressed: bool,
     is_right_pressed: bool,
     is_jump_pressed: bool,
-    last_jump_time: Option<Instant>,
+    last_jump_time: Option<f32>,
 }
 
 impl Plugin for BallPlugin {
@@ -61,7 +61,7 @@ impl BallBundle {
             force: Default::default(),
             impulse: Default::default(),
             friction: Friction {
-                coefficient: 10.0,
+                coefficient: 100.0,
                 combine_rule: CoefficientCombineRule::Max,
             },
             ball: Ball {
@@ -87,6 +87,18 @@ fn process_inputs(
             Some(KeyCode::Up) => {
                 ball.is_forward_pressed = event.state.is_pressed();
             }
+            Some(KeyCode::Down) => {
+                ball.is_backward_pressed = event.state.is_pressed();
+            }
+            Some(KeyCode::Right) => {
+                ball.is_right_pressed = event.state.is_pressed();
+            }
+            Some(KeyCode::Left) => {
+                ball.is_left_pressed = event.state.is_pressed();
+            }
+            Some(KeyCode::Space) => {
+                ball.is_jump_pressed = event.state.is_pressed();
+            }
             _ => {}
         }
     }
@@ -98,16 +110,53 @@ fn update_ball(
 ) {
     let (mut ball, mut ext_force, mut ext_impuse) = query.single_mut();
 
-    if ball.is_forward_pressed {
-        ext_force.force = Vec3::new(1.0, 0.0, 0.0);
-    } else {
-        ext_force.force = Vec3::new(0.0, 0.0, 0.0);
-    }
+    let movement_vector = {
+        let speed = 1.0;
 
-    // if ball.is_jump_pressed && ball.last_jump_time.is_none()
-    //     || time
-    //         .elapsed()
-    //         .duration_since(ball.last_jump_time.unwrap())
-    //         .as_secs_f32()
-    // {}
+        let forward_direction = Vec3::new(1.0, 0.0, 0.0);
+        let up_direction = Vec3::new(0.0, 1.0, 0.0);
+        let right_direction = forward_direction.cross(up_direction);
+
+        let mut movement_vector: Option<Vec3> = None;
+        let mut add_movement = |movement: Vec3| {
+            movement_vector = match movement_vector {
+                Some(res) => Some(res + movement),
+                None => Some(movement),
+            }
+        };
+
+        if ball.is_forward_pressed {
+            add_movement(forward_direction);
+        } else if ball.is_backward_pressed {
+            add_movement(-forward_direction);
+        }
+
+        if ball.is_right_pressed {
+            add_movement(right_direction);
+        } else if ball.is_left_pressed {
+            add_movement(-right_direction);
+        }
+
+        movement_vector
+            .map(|movement_vector| movement_vector.normalize() * speed)
+            .unwrap_or(Vec3::new(0.0, 0.0, 0.0))
+    };
+
+    ext_force.force = movement_vector;
+
+    // if ball.is_forward_pressed {
+    //     ext_force.force = Vec3::new(1.0, 0.0, 0.0);
+    // } else {
+    //     ext_force.force = Vec3::new(0.0, 0.0, 0.0);
+    // }
+
+    if ball.is_jump_pressed
+        && (ball.last_jump_time.is_none()
+            || time.elapsed().as_secs_f32() - ball.last_jump_time.unwrap() > 2.0)
+    {
+        ext_impuse.impulse = Vec3::new(0.0, 2.0, 0.0);
+        ball.last_jump_time = Some(time.elapsed().as_secs_f32());
+    } else {
+        ext_impuse.impulse = Vec3::new(0.0, 0.0, 0.0);
+    }
 }
